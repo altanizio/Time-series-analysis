@@ -1,0 +1,385 @@
+---
+title: Ações para o uso correto do capacete e influência nas fatalidades - Uma análise
+  temporal
+author: "Francisco Altanizio"
+date: "24/04/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    number_sections: false
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, out.width="100%", message=FALSE, warning=FALSE)
+options(scipen=999,OutDec= ",")
+```
+
+# Licença e código fonte
+
+<a rel="license" href="http://creativecommons.org/licenses/by/4.0/"><img alt="Licença Creative Commons" style="border-width:0" src="https://i.creativecommons.org/l/by/4.0/88x31.png" /></a><br />Este obra está licenciado com uma Licença <a rel="license" href="http://creativecommons.org/licenses/by/4.0/">Creative Commons Atribuição 4.0 Internacional</a>
+
+CASTRO JUNIOR. Ações para o uso correto do capacete e influência nas fatalidades: uma análise temporal. Fortaleza-CE, Brasil: RStudio/Rpubs, 2020.
+
+[Código fonte](https://github.com/altanizio/Time-series-analysis)
+
+# Campanha
+
+A campanha "CAPACETE SALVA VIDAS" foi realizada em fevereiro de 2017:
+
+<center>
+
+![fonte: https://www.fortaleza.ce.gov.br/noticias/prefeitura-de-fortaleza-intensifica-fiscalizacao-de-motociclistas-no-uso-do-capacete](fiscalizao-do-uso-do-capacete-10.jpg){#id .class width=70% height=70%}
+
+</center>
+
+
+```{r, include=FALSE}
+acc_2008_2014 = read.csv2("2008-2014.csv")
+acc_2015 = read.csv2("SIAT_2015.csv")
+acc_2016 = read.csv2("SIAT_2016.csv")
+acc_2017 = read.csv2("SIAT_2017.csv")
+
+library(readxl)
+frota <- read_excel("grafico.xlsx")
+acc_2018 =  read_excel("SIAT_2018.xlsx")
+
+library(dplyr)
+library(forecast)
+library(ggplot2)
+
+acc_2008_2014 = acc_2008_2014 %>% filter(MOTOCICLETA > 0) %>% group_by(MES,ANO) %>% summarize(Fatalidades=sum(MORTOS))
+acc_2015 = acc_2015 %>% filter(MOTOCICLETA > 0) %>% group_by(MES,ANO) %>% summarize(Fatalidades=sum(MORTOS))
+acc_2016 = acc_2016 %>% filter(MOTOCICLETA > 0) %>% group_by(MES,ANO) %>% summarize(Fatalidades=sum(MORTOS))
+acc_2017 = acc_2017 %>% filter(MOTOCICLETA > 0) %>% group_by(MES,ANO) %>% summarize(Fatalidades=sum(MORTOS))
+acc_2018 = acc_2018 %>% filter(MOTOCICLETA > 0) %>% group_by(MES,ANO) %>% summarize(Fatalidades=sum(MORTOS))
+
+acc = rbind(acc_2008_2014,acc_2015,acc_2016,acc_2017,acc_2018)
+
+acc = acc[order(acc$ANO),]
+
+acc$Fatalidades = acc$Fatalidades/frota$Frota*100000
+
+acc_ts = ts(acc$Fatalidades, start = c(2008,1), end = c(2018,12),frequency = 12)
+acc_ts_antes = ts(acc$Fatalidades, start = c(2008,1), end = c(2017,1),frequency = 12)
+
+frota_ts = ts(frota$Frota, start = c(2008,1), end = c(2018,12),frequency = 12)
+
+```
+
+```{r, include=FALSE, message=FALSE, warning=FALSE}
+base = readRDS('baseCapacete')
+base = base %>% select(day,month,year,driver_helmet,passenger_helmet_1) 
+
+base = base %>% mutate(helmet = ifelse(driver_helmet==1,1,0))
+
+base = base %>% mutate(Data = as.Date(paste(year, month, day,sep="-"), "%Y-%m-%d"))
+
+base_passenger = base %>% filter(!is.na(passenger_helmet_1) , passenger_helmet_1 != 999)
+base_passenger = base_passenger %>% mutate(helmet = ifelse(passenger_helmet_1==1,1,0))
+
+base = rbind(base,base_passenger)
+base = base %>% mutate(Data_2 = lubridate::floor_date( Data , "6 months" ))
+
+base = base %>% group_by(Data_2) %>% summarize(helmet=sum(helmet)/length(helmet))
+
+base_ts = ts(base$helmet, start = c(2015,2), end = c(2019,1),frequency = 2)
+base_ts_antes = ts(base$helmet, start = c(2015,2), end = c(2017,1),frequency = 2)
+
+base_ts_passenger = readRDS('base_ts_passenger')
+base_ts_passenger_antes = readRDS('base_ts_passenger_antes')
+```
+
+
+# Análise Temporal
+
+O indicador analisado é o número de motocilcistas falecidos em acidentes de trânsito de cada mês, dividido pela frota de motocicletas e multiplicado por 100.000 para uma melhor visualização.
+
+- $\frac{Fatalidades}{Frota}*100000~fatalidades/motocicletas~de~cada~mês~dos~períodos~de~2008~até~2018$
+
+O valor é reprentado no gráfico temporal:
+
+```{r  echo=FALSE, message=FALSE, warning=FALSE, out.width="100%"}
+library(plotly)
+date = seq( as.Date("2008-01-01"), by= "month", length.out=132)
+stl_acc_ts = stl(acc_ts,"periodic")
+stl_acc_ts = as.data.frame(stl(acc_ts,"periodic")$time.series)
+stl_acc_ts$data = as.Date(date)
+
+acc$data = as.Date(date)
+acc$Fatalidades = as.numeric (acc$Fatalidades)
+fig1 <- plot_ly(stl_acc_ts, x = ~data, y = ~seasonal, name = 'Seasonal', type = 'scatter', mode = 'lines',hoverinfo = "text",
+    hovertemplate = paste('Data: %{x}',
+                        '<br>Valor: %{y:.2f}<br>')) 
+fig2 <- plot_ly(stl_acc_ts, x = ~data,y = ~trend, name = 'Tendência', type = 'scatter', mode = 'lines',hoverinfo = "text",
+    hovertemplate = paste('Data: %{x}',
+                        '<br>Valor: %{y:.2f}<br>')) 
+fig3 <- plot_ly(x = acc$data, y = acc$Fatalidades, name = 'Dados', mode = 'lines',hoverinfo = "text",
+    hovertemplate = paste('Data: %{x}',
+                        '<br>Valor: %{y:.2f}<br>')) 
+
+subplot(fig3, fig1,fig2,nrows = 3, shareX = TRUE)  %>% layout(xaxis = list(type = 'date'),legend = list(x = 0, y = 1.1))
+
+```
+
+No gráfico: `Tendência` demonstra como os dados estão se comportando temporalmente. Pode-se observar uma queda no período após a campanha (2017-02).
+
+Um ponto importante para analisar é se a campanha de conscientização aumentou a porcentagem de uso do capacete pelos motociclistas. A porcentagem do uso do capacete, gráfico abaixo, aumenta continuamente nos anos antes e depois da campanha. Os dados foram do estudo de [Torres et al. (2019)](http://www.anpet.org.br/anais/documentos/2019/Tr%C3%A1fego%20Urbano%20e%20Rodovi%C3%A1rio/Seguran%C3%A7a%20Vi%C3%A1ria%20III/6_759_AC.pdf), os autores citam que ocorreu um aumento significativo do uso do dispositivo de segurança somente pelo passageiro da motocicleta.
+
+Observando os gráficos abaixo, existe apenas uma mudança no comportamento, o qual a linha de tendência tem uma alteração no coeficiente angular antes e depois de fevereiro de 2017.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, out.width="100%"}
+date = c("2015-07-01","2016-01-01","2016-07-01","2017-01-01","2017-07-01","2018-01-01","2018-07-01","2019-01-01")
+stl_acc_ts = stl(base_ts,"periodic")
+stl_acc_ts = as.data.frame(stl_acc_ts$time.series)
+stl_acc_ts$data = as.Date(date)
+
+base_ts_df = as.data.frame(base_ts)
+base_ts_df$data = as.Date(date)
+
+fig1 <- plot_ly(stl_acc_ts, x = ~data, y = ~seasonal, name = 'Seasonal', type = 'scatter', mode = 'lines',hoverinfo = "text",
+    hovertemplate = paste('Data: %{x}',
+                        '<br>Valor: %{y:.2f}<br>')) 
+fig2 <- plot_ly(stl_acc_ts, x = ~data,y = ~trend, name = 'Tendência', type = 'scatter', mode = 'lines',hoverinfo = "text",
+    hovertemplate = paste('Data: %{x}',
+                        '<br>Valor: %{y:.2f}<br>')) 
+fig3 <- plot_ly(x = base_ts_df$data, y = base_ts_df$x, name = 'Dados', mode = 'lines',hoverinfo = "text",
+    hovertemplate = paste('Data: %{x}',
+                        '<br>Valor: %{y:.2f}<br>')) 
+
+fig4 = subplot(fig3, fig1,fig2,nrows = 3, shareX = TRUE) %>% layout(title ="Proporção de uso do capacete por todos:",xaxis = list(
+        type = 'date'))
+
+date = c("2015-07-01","2016-01-01","2016-07-01","2017-01-01","2017-07-01","2018-01-01","2018-07-01","2019-01-01")
+stl_acc_ts = stl(base_ts_passenger,"periodic")
+stl_acc_ts = as.data.frame(stl_acc_ts$time.series)
+stl_acc_ts$data = as.Date(date)
+
+base_ts_df = as.data.frame(base_ts_passenger)
+base_ts_df$data = as.Date(date)
+
+fig1 <- plot_ly(stl_acc_ts, x = ~data, y = ~seasonal, name = 'Seasonal', type = 'scatter', mode = 'lines',hoverinfo = "text",
+    hovertemplate = paste('Data: %{x}',
+                        '<br>Valor: %{y:.2f}<br>'))  
+fig2 <- plot_ly(stl_acc_ts, x = ~data,y = ~trend, name = 'Tendência', type = 'scatter', mode = 'lines',hoverinfo = "text",
+    hovertemplate = paste('Data: %{x}',
+                        '<br>Valor: %{y:.2f}<br>')) 
+fig3 <- plot_ly(x = base_ts_df$data, y = base_ts_df$x, name = 'Dados', mode = 'lines',hoverinfo = "text",
+    hovertemplate = paste('Data: %{x}',
+                        '<br>Valor: %{y:.2f}<br>'))  
+
+fig5 = subplot(fig3, fig1,fig2,nrows = 3, shareX = TRUE) %>% layout(title ="Proporção de uso do capacete por somente o passageiro:",xaxis = list(
+        type = 'date'))
+
+
+
+fig4 %>% layout(legend = list(x = 0, y = 1))
+fig5 %>% layout(legend = list(x = 0, y = 1))
+```
+
+## Análise das fatalidades por mês
+
+Visto que existe uma tendência de diminuição das fatalidades, observado nos gráficos anteriores, é proposto a seguir um estudo de comparação entre cenários:
+
+- `Cenário em que não aconteceu a ação`
+
+- `Cenário que aconteceu a ação`
+
+Para a comparação é feito uma estimativa dos valores prováveis caso a campanha não fosse realizada, ou seja, foi calibrado um modelo a partir dos dados antes da campanha e estimado os valores futuros.
+
+Análise temporal dos dados de fatalidade:
+
+```{r echo=FALSE, out.width="100%",results= FALSE}
+library(forecast)
+library(ggplot2)
+
+acc_ts_antes %>% ggtsdisplay(main = "")
+acc_ts_antes %>% diff() %>% ggtsdisplay(main = "Série em primeira diferença")
+acc_ts_antes %>% diff(lag = 12) %>% ggtsdisplay(main = "Série em primeira diferença sazonal")
+
+urca::ur.kpss(acc_ts_antes) # Acima de p-valor>0,05 -> Null hypothesis is stationarity
+tseries::adf.test(acc_ts_antes, k = 12)
+tseries::adf.test(acc_ts_antes, k = 12, alternative = c("explosive"))
+nsdiffs(acc_ts_antes)
+
+
+```
+
+### Pela média móvel
+
+```{r echo=FALSE, out.width="100%"}
+library(zoo)
+mm = ma(acc_ts_antes, order = 2)
+
+fore = forecast(mm, h = 23)
+
+fig <- plot_ly()
+
+fig <- fig %>% add_ribbons(x = as.yearmon(time(fore$mean)), ymin = fore$lower[, 2], ymax = fore$upper[, 2],
+              color = I("gray95"), name = "95% confiança")
+fig <- fig %>% add_ribbons(x = as.yearmon(time(fore$mean)), ymin = fore$lower[, 1], ymax = fore$upper[, 1],
+              color = I("gray80"), name = "80% confiança")
+
+
+fig <- fig %>% add_lines(x = as.yearmon(time(fore$mean)), y = fore$mean, color = I("blue"), name = "prediction",hoverinfo = "text",text = ~paste("Data :", as.yearmon(time(fore$mean)),
+                           "<br>Valor :", round(fore$mean, 2))) 
+
+fig <- fig %>% add_lines(x = as.yearmon(time(acc_ts)), y = acc_ts,
+            color = I("black"), name = "observed",text = ~paste("Data :", as.yearmon(time(acc_ts)),
+                           "<br>Valor :", round(acc_ts, 2)),hoverinfo = "text")
+
+fig %>% layout(legend = list(x = 0, y = 1), title = "Média móvel (order = 2)")
+```
+
+### Pelo método de auto.arima
+
+```{r echo=FALSE, out.width="100%"}
+
+
+
+fit = auto.arima(acc_ts_antes, stepwise = FALSE, approximation = FALSE)
+
+fore = forecast(fit, level = c(80,95), h = 23)
+
+fig <- plot_ly()
+
+fig <- fig %>% add_ribbons(x = as.yearmon(time(fore$mean)), ymin = fore$lower[, 2], ymax = fore$upper[, 2],
+              color = I("gray95"), name = "95% confiança")
+fig <- fig %>% add_ribbons(x = as.yearmon(time(fore$mean)), ymin = fore$lower[, 1], ymax = fore$upper[, 1],
+              color = I("gray80"), name = "80% confiança")
+
+
+fig <- fig %>% add_lines(x = as.yearmon(time(fore$mean)), y = fore$mean, color = I("blue"), name = "prediction",hoverinfo = "text",text = ~paste("Data :", as.yearmon(time(fore$mean)),
+                           "<br>Valor :", round(fore$mean, 2))) 
+
+fig <- fig %>% add_lines(x = as.yearmon(time(acc_ts)), y = acc_ts,
+            color = I("black"), name = "observed",text = ~paste("Data :", as.yearmon(time(acc_ts)),
+                           "<br>Valor :", round(acc_ts, 2)),hoverinfo = "text")
+
+fig %>% layout(legend = list(x = 0, y = 1),title = "ARIMA(1,1,2)(1,0,0)")
+```
+
+```{r echo=FALSE, out.width="100%"}
+pvalues <- (1 - pnorm(abs(fit$coef)/sqrt(diag(fit$var.coef)))) * 2
+pvalues # coeficientes sgnificativos
+
+checkresiduals(fit)  # p-valor > 0,05 -> não existe correlação entre residuais / white noise
+
+require(FitAR)  # pratico para plotar graficos de Q
+FitAR::LBQPlot(residuals(fit), 36)
+
+require(tseries)
+jarque.bera.test(residuals(fit))
+shapiro.test(residuals(fit))
+var(residuals(fit))
+mean(residuals(fit))
+
+autoplot(fit)
+```
+
+```{r echo=FALSE, out.width="100%"}
+library(plotly)
+date = seq( as.Date("2008-01-01"), by= "month", length.out=132)
+stl_acc_ts = stl(acc_ts,"periodic")
+stl_acc_ts = as.data.frame(stl(acc_ts,"periodic")$time.series)
+stl_acc_ts$data = as.Date(date)
+
+stl_acc_ts_pred = as.data.frame(stl(ts(c(acc_ts_antes,fore$mean),start = c(2008, 1),frequency = 12),"periodic")$time.series)
+stl_acc_ts_pred$data = as.Date(date)
+
+stl_acc_ts_pred_95_i = as.data.frame(stl(ts(c(acc_ts_antes,fore$lower[, 2]),start = c(2008, 1),frequency = 12),"periodic")$time.series)
+stl_acc_ts_pred_95_i$data = as.Date(date)
+
+stl_acc_ts_pred_95_s = as.data.frame(stl(ts(c(acc_ts_antes,fore$upper[, 2]),start = c(2008, 1),frequency = 12),"periodic")$time.series)
+stl_acc_ts_pred_95_s$data = as.Date(date)
+
+stl_acc_ts_pred_80_i = as.data.frame(stl(ts(c(acc_ts_antes,fore$lower[, 1]),start = c(2008, 1),frequency = 12),"periodic")$time.series)
+stl_acc_ts_pred_80_i$data = as.Date(date)
+
+stl_acc_ts_pred_80_s = as.data.frame(stl(ts(c(acc_ts_antes,fore$upper[, 1]),start = c(2008, 1),frequency = 12),"periodic")$time.series)
+stl_acc_ts_pred_80_s$data = as.Date(date)
+
+acc$data = as.Date(date)
+acc$Fatalidades = as.numeric (acc$Fatalidades)
+
+
+
+
+fig <- plot_ly()
+
+
+fig <- fig %>% add_ribbons(x = stl_acc_ts_pred_95_s$data, ymin = stl_acc_ts_pred_95_i$trend, ymax = stl_acc_ts_pred_95_s$trend,
+              color = I("gray90"), name = "95% confiança")
+
+
+fig <- fig %>% add_ribbons(x = stl_acc_ts_pred_80_s$data, ymin = stl_acc_ts_pred_80_i$trend, ymax = stl_acc_ts_pred_80_s$trend,
+              color = I("gray80"), name = "80% confiança")
+
+fig <-fig %>% add_lines(x = stl_acc_ts_pred$data,y = stl_acc_ts_pred$trend, name = 'Tendência da previsão', type = 'scatter', mode = 'lines',hoverinfo = "text",
+    hovertemplate = paste('Data: %{x}',
+                        '<br>Valor: %{y:.2f}<br>')) 
+
+
+fig <- fig %>% add_lines(x = stl_acc_ts$data,y = stl_acc_ts$trend, name = 'Tendência obsevada', type = 'scatter', mode = 'lines',hoverinfo = "text",
+    hovertemplate = paste('Data: %{x}',
+                        '<br>Valor: %{y:.2f}<br>')) 
+
+fig %>% layout(xaxis = list(type = 'date',range = c( as.numeric(as.Date("2016-01-01")) * 24 * 60 * 60 * 1000, as.numeric(as.Date("2018-12-01")) * 24 * 60 * 60 * 1000)),legend = list(x = 0, y = 1.1))
+
+```
+
+```{r echo=FALSE, out.width="100%"}
+num_evit = sum((fore$mean - acc_ts)*frota_ts/100000)
+ano_2014 = 664821.46
+ano_2018=ano_2014*(1+1.5/100)^4
+
+valor_econ = paste("R$",format(num_evit * ano_2018,big.mark=".",decimal.mark = ',',scientific=FALSE, nsmall=2))
+
+
+num_evit = sprintf("%.0f",num_evit)
+```
+
+# Conclusões
+
+Nos dois modelos a linha dos dados observáveis se manteve dentro do intervalo de confiança de 80%, entretanto observa-se que os dados da predição estão acima dos observáveis na maioria dos pontos. As linhas de tendência mostram que os valores observáveis estão abaixo dos previstos, demonstrando uma possível melhora.
+
+Pode-se concluir que a ação causou um possível impacto nas reduções das fatalidades dos motociclistas em acidentes de tráfego, pela tendência estar diminuindo a partir deste período, porém não se tem informação suficiente para crer que este impacto foi significativo nas reduções das fatalidades até o final de 2018, na ótica desta análise temporal. Acredita-se que nos períodos futuros as reduções irão continuar.
+
+Usando os valores previstos, temos que uma redução de `r num_evit` fatalidades desde fevereiro de 2017 até final de 2018, logo um valor total de `r valor_econ` foi economizado em vidas em acidentes de trânsito em média.
+
+Vale ressaltar que campanhas de conscientização para o uso correto dos dispositivos de segurança são de grande importância na criação de uma cultura de segurança. Aumentar a conscientização dos motociclistas é uma abordagem valiosa para se obter resultados nas reduções das fatalidades, assim alcançando `zero` fatalidades e lesões graves no trânsito.
+
+# Fonte dos dados
+
+Acidentes: AMC, <https://www.unifor.br/web/osv>
+
+Frota: IBGE, <https://cidades.ibge.gov.br/brasil/ce/fortaleza/pesquisa/22/28120>
+
+Uso do capacete: Bloomberg, Johns Hopkins International Injury Research Unit, Universidade Federal do Ceará, <https://www.bloomberg.org/program/public-health/road-safety/>
+
+# Referências
+
+Box, G. E. P., e Jenkins, G. J. (1970) Time Series Analysis: Forecasting and Control.
+
+Figueiredo, Adriano Marcos Rodrigues. Séries Temporais com R: Análise do Consumo do Varejo em MS. Campo Grande-MS,Brasil: RStudio/Rpubs, 2019. Disponível em http://rpubs.com/amrofi/arima_varejoms.
+
+Minervi, N. A. (2013) Análise fatorial e de séries temporais aplicadas às séries dos acidentes de trânsito nas rodovias federais brasileiras. Universidade Federal do Paraná.
+
+OMS. (2015) Relatório Global Sobre O Estado Da Segurança Viária 2015. Relatório Global Sobre O Estado Da Segurança Viária 2015 (Vol. 1). Obtido de http://www.who.int/violence_injury_prevention/road_traffi c/en/
+
+Polli, D. A., e Vieira, N. N. (2013) Modelagem estatística da série mensal de acidentes aéreos: um algoritmo automatizado para a seleção de modelos de previsão do número de ocorrências em curto prazo. Conexão SIPAER, 6(1), 551–558.
+
+SIAT. (2017) Relatório Anual de Segurança Viária. Fortaleza.
+
+Telesca, L., e Lovallo, M. (2008) Analysis of the temporal properties in car accident time series. Physica A: Statistical Mechanics and its Applications, 387(13), 3299–3304. doi:10.1016/j.physa.2008.01.055
+
+Torres, C. A., Sobreira, L. T. P., Castro Júnior, F. A. B., Silva, M. N., Castro Neto, M. M., Cunto, F. J. C., Vecino-Ortiz, A. I., e Bachani, A. M. (2019) Análise exploratória das taxas de utilização do cinto de segurança e capacete após esforços de conscientização dos usuários em Fortaleza-ce. ANPET, 33.
+
+WHO. (2018) The Global status report on road safety 2018. Geneva (Vol. III). Obtido de https://www.who.int/violence_injury_prevention/road_safety_status/2018/en/
+
+
+
