@@ -8,7 +8,7 @@
 </p>
 <p align="center">
  <a href="#objetivo">Objetivo</a> •
- <a href="#demonstração">Demonstração</a> • 
+ <a href="#demonstração">Demonstração</a>
 </p>
 
 
