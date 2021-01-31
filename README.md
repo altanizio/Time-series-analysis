@@ -14,7 +14,7 @@
 
 <h2 id="objetivo">Objetivo</h2>
 
-O objetivo desse relatório desenvolvido no R Markdown analisa temporalmente o uso correto do capacete e as fatalidades dos acidentes envolvendo os motociclistas.
+O objetivo desse relatório, desenvolvido no R Markdown, é analisar temporalmente a relação do uso correto do capacete com as fatalidades dos acidentes envolvendo os motociclistas.
 
 <h2 id="demonstração">Demonstração</h2>
 ![](Imagens/app.gif?raw=true)
